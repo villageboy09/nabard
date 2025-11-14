@@ -1,7 +1,12 @@
 import axios from 'axios';
 import type { Field, RiskScore, Alert, WeatherData, SatelliteData, DashboardSummary, FieldWithRisk } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Auto-detect API URL based on environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || (
+  typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? '/api'  // Use relative path for Vercel deployment
+    : 'http://localhost:5000/api'
+);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -19,10 +24,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Auth API
+export const authApi = {
+  login: async (email: string, password: string): Promise<{ token: string; user: any }> => {
+    const response = await api.post('/login', { email, password });
+    return response.data.data;
+  },
+};
+
 // API Services
 export const riskApi = {
   getDashboard: async (): Promise<{ summary: DashboardSummary; fields: FieldWithRisk[] }> => {
-    const response = await api.get('/risks/dashboard');
+    const response = await api.get('/dashboard');
     return response.data.data;
   },
 
