@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    container_name: agri-risk-postgres
+    environment:
+      POSTGRES_DB: agri_risk_db
+      POSTGRES_USER: agri_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - agri-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agri_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: agri-risk-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - agri-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agri-risk-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://agri_user:${DB_PASSWORD:-changeme}@postgres:5432/agri_risk_db
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      PORT: 5000
+      JWT_SECRET: ${JWT_SECRET}
+      WEATHER_API_KEY: ${WEATHER_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SATELLITE_API_KEY: ${SATELLITE_API_KEY}
+      AGRI_STACK_API_KEY: ${AGRI_STACK_API_KEY}
+      MARKET_API_KEY: ${MARKET_API_KEY}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend/logs:/app/logs
+    networks:
+      - agri-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api}
+    container_name: agri-risk-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - agri-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  agri-network:
+    driver: bridge

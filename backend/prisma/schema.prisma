@@ -1,0 +1,386 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  phone     String?  @unique
+  password  String
+  name      String
+  role      Role     @default(FARMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  farmerProfile FarmerProfile?
+  lenderProfile LenderProfile?
+
+  @@index([email])
+  @@index([phone])
+}
+
+enum Role {
+  FARMER
+  LENDER
+  ADMIN
+}
+
+// Farmer Profile
+model FarmerProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farmerId      String   @unique // Agri Stack Farmer ID
+  district      String
+  state         String
+  language      String   @default("en")
+
+  // Relations
+  fields        Field[]
+  alerts        Alert[]
+  loans         Loan[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([farmerId])
+  @@index([district, state])
+}
+
+// Lender Profile
+model LenderProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institutionName String
+  licenseNumber   String   @unique
+  district        String
+  state           String
+
+  // Relations
+  loans           Loan[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([licenseNumber])
+}
+
+// Field/Land Parcel
+model Field {
+  id              String         @id @default(uuid())
+  farmerProfileId String
+  farmerProfile   FarmerProfile  @relation(fields: [farmerProfileId], references: [id], onDelete: Cascade)
+
+  fieldCode       String         @unique
+  area            Float          // in hectares
+  latitude        Float
+  longitude       Float
+  boundary        Json?          // GeoJSON polygon
+  soilType        String?
+  irrigationType  String?
+
+  // Current Crop
+  currentCrop     String?
+  cropVariety     String?
+  sowingDate      DateTime?
+  expectedHarvest DateTime?
+  cropStage       String?        // germination, vegetative, flowering, maturity
+
+  // Relations
+  weatherData     WeatherData[]
+  satelliteData   SatelliteData[]
+  riskScores      RiskScore[]
+  soilData        SoilData[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([farmerProfileId])
+  @@index([latitude, longitude])
+}
+
+// Weather Data (7-15 day forecast + historical)
+model WeatherData {
+  id              String   @id @default(uuid())
+  fieldId         String
+  field           Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  date            DateTime
+  forecastDate    DateTime // Date for which this is a forecast
+  isForecast      Boolean  @default(true)
+
+  // Weather params
+  tempMin         Float?   // Celsius
+  tempMax         Float?
+  tempAvg         Float?
+  rainfall        Float?   // mm
+  humidity        Float?   // %
+  windSpeed       Float?   // km/h
+  solarRadiation  Float?   // W/m²
+
+  // Derived/calculated
+  heatStressIndex Float?   // 0-100
+  chillHours      Float?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([fieldId, forecastDate])
+  @@index([fieldId, date])
+  @@index([forecastDate])
+}
+
+// Satellite Data (NDVI, EVI from Sentinel-2)
+model SatelliteData {
+  id              String   @id @default(uuid())
+  fieldId         String
+  field           Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  captureDate     DateTime
+  source          String   @default("sentinel-2") // sentinel-2, landsat-8, etc.
+
+  // Vegetation Indices
+  ndvi            Float?   // -1 to 1
+  evi             Float?   // Enhanced Vegetation Index
+  savi            Float?   // Soil Adjusted Vegetation Index
+  ndwi            Float?   // Normalized Difference Water Index
+
+  // Crop health status
+  healthStatus    String?  // excellent, good, fair, poor, critical
+  stressLevel     Float?   // 0-100
+
+  // Image metadata
+  cloudCover      Float?   // percentage
+  imageUrl        String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fieldId, captureDate])
+  @@index([captureDate])
+}
+
+// Soil Data
+model SoilData {
+  id              String   @id @default(uuid())
+  fieldId         String
+  field           Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  measurementDate DateTime
+
+  // Soil parameters
+  moisture        Float?   // %
+  ph              Float?
+  nitrogen        Float?   // kg/ha
+  phosphorus      Float?   // kg/ha
+  potassium       Float?   // kg/ha
+  organicCarbon   Float?   // %
+
+  // Calculated
+  moistureDeficit Float?   // 0-100 (0 = adequate, 100 = severe deficit)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fieldId, measurementDate])
+}
+
+// Risk Score (Composite risk calculation)
+model RiskScore {
+  id              String   @id @default(uuid())
+  fieldId         String
+  field           Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  calculationDate DateTime
+  forecastDate    DateTime // Risk score for this date
+
+  // Component scores (0-100, higher = more risk)
+  weatherRisk     Float    @default(0)
+  ndviRisk        Float    @default(0)
+  soilMoistureRisk Float   @default(0)
+  pestRisk        Float    @default(0)
+  marketRisk      Float    @default(0)
+
+  // Composite
+  overallRisk     Float    @default(0) // Weighted average
+  riskLevel       RiskLevel @default(LOW)
+
+  // Impact predictions
+  yieldImpact     Float?   // % reduction expected
+  repaymentRisk   Float?   // 0-100
+
+  // AI Analysis
+  geminiSummary   String?  @db.Text
+  recommendations String?  @db.Text
+  confidence      Float?   // 0-1
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([fieldId, forecastDate])
+  @@index([fieldId, calculationDate])
+  @@index([overallRisk])
+  @@index([riskLevel])
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Alerts
+model Alert {
+  id              String         @id @default(uuid())
+  farmerProfileId String
+  farmerProfile   FarmerProfile  @relation(fields: [farmerProfileId], references: [id], onDelete: Cascade)
+
+  alertType       AlertType
+  severity        AlertSeverity
+  title           String
+  message         String         @db.Text
+  actionable      String?        @db.Text // Recommended actions
+
+  // Metadata
+  validFrom       DateTime
+  validUntil      DateTime
+  triggered       Boolean        @default(false)
+  sentAt          DateTime?
+  readAt          DateTime?
+
+  // Delivery status
+  smsSent         Boolean        @default(false)
+  whatsappSent    Boolean        @default(false)
+  pushSent        Boolean        @default(false)
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([farmerProfileId, triggered])
+  @@index([alertType, severity])
+  @@index([validFrom, validUntil])
+}
+
+enum AlertType {
+  WEATHER_EXTREME       // Heatwave, heavy rain
+  IRRIGATION_NEEDED
+  PEST_DISEASE
+  MARKET_PRICE_DROP
+  CROP_STRESS
+  SOIL_DEGRADATION
+  REPAYMENT_RISK
+  INSURANCE_TRIGGER
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+// Pest & Disease Advisory
+model PestAdvisory {
+  id              String   @id @default(uuid())
+  district        String
+  state           String
+  cropType        String
+
+  pestName        String
+  diseaseType     String?
+  severity        String   // low, medium, high
+  probability     Float    // 0-1
+
+  symptoms        String?  @db.Text
+  control         String?  @db.Text
+
+  validFrom       DateTime
+  validUntil      DateTime
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([district, state, cropType])
+  @@index([validFrom, validUntil])
+}
+
+// Market Price Data
+model MarketPrice {
+  id              String   @id @default(uuid())
+  commodity       String
+  variety         String?
+  market          String   // Mandi name
+  district        String
+  state           String
+
+  date            DateTime
+  minPrice        Float
+  maxPrice        Float
+  modalPrice      Float    // Most common price
+
+  // Price trend
+  priceChange     Float?   // % change from previous week
+  volatility      Float?   // 0-100
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([commodity, market, date])
+  @@index([commodity, district, date])
+}
+
+// Loan Data
+model Loan {
+  id              String         @id @default(uuid())
+  farmerProfileId String
+  farmerProfile   FarmerProfile  @relation(fields: [farmerProfileId], references: [id], onDelete: Cascade)
+  lenderProfileId String
+  lenderProfile   LenderProfile  @relation(fields: [lenderProfileId], references: [id], onDelete: Cascade)
+
+  loanAmount      Float
+  outstandingAmount Float
+  interestRate    Float
+  disbursedDate   DateTime
+  dueDate         DateTime
+  status          LoanStatus     @default(ACTIVE)
+
+  // Risk assessment
+  repaymentRisk   Float?         // 0-100
+  weatherExposure Float?         // 0-100
+  lastRiskUpdate  DateTime?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([farmerProfileId])
+  @@index([lenderProfileId])
+  @@index([status])
+}
+
+enum LoanStatus {
+  ACTIVE
+  OVERDUE
+  SETTLED
+  DEFAULTED
+}
+
+// System Configuration
+model SystemConfig {
+  id              String   @id @default(uuid())
+  key             String   @unique
+  value           String   @db.Text
+  description     String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
