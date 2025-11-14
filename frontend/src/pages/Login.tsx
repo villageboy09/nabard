@@ -18,19 +18,41 @@ export function Login({ onLogin }: LoginProps) {
     setLoading(true);
 
     try {
+      console.log('[Frontend] Attempting login with email:', email);
       const data = await authApi.login(email, password);
+      console.log('[Frontend] Login successful, received token');
       localStorage.setItem('authToken', data.token);
       onLogin(data.token);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      console.error('[Frontend] Login error:', err);
+      const errorMsg = err.response?.data?.message || err.message || 'Login failed. Please try again.';
+      console.error('[Frontend] Error message:', errorMsg);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  const quickLogin = (demoEmail: string) => {
+  const quickLogin = async (demoEmail: string) => {
     setEmail(demoEmail);
     setPassword('demo123');
+    setError('');
+    setLoading(true);
+
+    try {
+      console.log('[Frontend] Quick login for:', demoEmail);
+      const data = await authApi.login(demoEmail, 'demo123');
+      console.log('[Frontend] Quick login successful');
+      localStorage.setItem('authToken', data.token);
+      onLogin(data.token);
+    } catch (err: any) {
+      console.error('[Frontend] Quick login error:', err);
+      const errorMsg = err.response?.data?.message || err.message || 'Login failed. Please try again.';
+      console.error('[Frontend] Error message:', errorMsg);
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -104,21 +126,24 @@ export function Login({ onLogin }: LoginProps) {
             <button
               type="button"
               onClick={() => quickLogin('farmer1@demo.com')}
-              className="w-full py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+              disabled={loading}
+              className="w-full py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               👨‍🌾 Farmer 1 (Cotton & Soybean)
             </button>
             <button
               type="button"
               onClick={() => quickLogin('farmer2@demo.com')}
-              className="w-full py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+              disabled={loading}
+              className="w-full py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               👩‍🌾 Farmer 2 (Rice)
             </button>
             <button
               type="button"
               onClick={() => quickLogin('lender@demo.com')}
-              className="w-full py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors"
+              disabled={loading}
+              className="w-full py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               🏦 Lender (Portfolio View)
             </button>

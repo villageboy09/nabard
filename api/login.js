@@ -68,7 +68,10 @@ export default async function handler(req, res) {
   try {
     const { email, password } = req.body;
 
+    console.log('[Login] Attempting login for email:', email);
+
     if (!email || !password) {
+      console.log('[Login] Missing email or password');
       return res.status(400).json({
         status: 'error',
         message: 'Email and password are required'
@@ -110,27 +113,33 @@ export default async function handler(req, res) {
         }
       }
     } catch (dbError) {
-      console.log('Database not available, using mock data:', dbError.message);
+      console.log('[Login] Database not available, using mock data:', dbError.message);
       useMockData = true;
     }
 
     // Fallback to mock data if database is not available or user not found
     if (!user || useMockData) {
+      console.log('[Login] Using mock data for authentication');
       user = MOCK_USERS.find(u => u.email === email);
 
       if (!user) {
+        console.log('[Login] User not found in mock data:', email);
         return res.status(401).json({
           status: 'error',
           message: 'Invalid credentials'
         });
       }
 
+      console.log('[Login] User found in mock data, verifying password');
       if (user.password !== password) {
+        console.log('[Login] Password mismatch');
         return res.status(401).json({
           status: 'error',
           message: 'Invalid credentials'
         });
       }
+
+      console.log('[Login] Mock authentication successful for:', email);
     }
 
     // Generate JWT token
@@ -145,7 +154,9 @@ export default async function handler(req, res) {
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
-    res.status(200).json({
+    console.log('[Login] JWT token generated successfully for:', user.email);
+
+    const response = {
       status: 'success',
       data: {
         token,
@@ -158,9 +169,12 @@ export default async function handler(req, res) {
           lenderProfile: user.lenderProfile,
         },
       },
-    });
+    };
+
+    console.log('[Login] Sending response for:', user.email);
+    res.status(200).json(response);
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('[Login] Error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Internal server error: ' + error.message
