@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { MapPin, TrendingUp, AlertTriangle, Leaf } from 'lucide-react';
+import { MapPin, TrendingUp, AlertTriangle, Leaf, LogOut } from 'lucide-react';
 import { riskApi, alertApi } from '@/services/api';
 import { FieldMap } from '@/components/maps/FieldMap';
 import { AlertsList } from '@/components/alerts/AlertsList';
@@ -8,7 +8,11 @@ import { getRiskColor, getRiskBgColor } from '@/utils/risk';
 import { useStore } from '@/store/useStore';
 import type { FieldWithRisk } from '@/types';
 
-export function Dashboard() {
+interface DashboardProps {
+  onLogout?: () => void;
+}
+
+export function Dashboard({ onLogout }: DashboardProps) {
   const { setSelectedField, setAlerts, setUnreadAlertCount } = useStore();
   const [selectedTab, setSelectedTab] = useState<'map' | 'alerts'>('map');
 
@@ -66,7 +70,7 @@ export function Dashboard() {
               <h1 className="text-2xl font-bold text-gray-900">Agricultural Risk Mitigation Dashboard</h1>
               <p className="text-sm text-gray-600 mt-1">7-15 Day Forward-Looking Risk Analysis</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
               <div className="relative">
                 <AlertTriangle className="w-6 h-6 text-gray-600" />
                 {alertsData && alertsData.unreadCount > 0 && (
@@ -75,6 +79,16 @@ export function Dashboard() {
                   </span>
                 )}
               </div>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
