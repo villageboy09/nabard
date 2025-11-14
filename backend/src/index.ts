@@ -7,6 +7,7 @@ import { logger } from './utils/logger.js';
 import riskRoutes from './routes/riskRoutes.js';
 import alertRoutes from './routes/alertRoutes.js';
 import fieldRoutes from './routes/fieldRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -38,6 +39,7 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/risks', riskRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/fields', fieldRoutes);
@@ -49,11 +51,18 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     description: 'Track 2 - Risk Mitigation & Early Warning System',
     endpoints: {
+      auth: '/api/auth',
       risks: '/api/risks',
       alerts: '/api/alerts',
       fields: '/api/fields',
       health: '/health',
     },
+    demoMode: process.env.DEMO_MODE === 'true',
+    demoCredentials: process.env.DEMO_MODE === 'true' ? {
+      farmer1: 'farmer1@demo.com / demo123',
+      farmer2: 'farmer2@demo.com / demo123',
+      lender: 'lender@demo.com / demo123',
+    } : undefined,
   });
 });
 
