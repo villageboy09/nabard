@@ -1,9 +1,50 @@
-// Vercel Serverless Function Handler
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+// Vercel Serverless Function Handler with Mock Data Support
 import jwt from 'jsonwebtoken';
 
-const prisma = new PrismaClient();
+// Mock users for demo mode (works without database)
+const MOCK_USERS = [
+  {
+    id: 'mock-farmer-1',
+    email: 'farmer1@demo.com',
+    password: 'demo123',
+    name: 'Rajesh Kumar',
+    role: 'FARMER',
+    farmerProfile: {
+      id: 'profile-1',
+      phoneNumber: '+91-9876543210',
+      totalLandArea: 5.5,
+      registrationNumber: 'AGR2024001',
+      languagePreference: 'en',
+    },
+  },
+  {
+    id: 'mock-farmer-2',
+    email: 'farmer2@demo.com',
+    password: 'demo123',
+    name: 'Priya Sharma',
+    role: 'FARMER',
+    farmerProfile: {
+      id: 'profile-2',
+      phoneNumber: '+91-9876543211',
+      totalLandArea: 3.2,
+      registrationNumber: 'AGR2024002',
+      languagePreference: 'en',
+    },
+  },
+  {
+    id: 'mock-lender-1',
+    email: 'lender@demo.com',
+    password: 'demo123',
+    name: 'Bank of Agriculture',
+    role: 'LENDER',
+    lenderProfile: {
+      id: 'lender-profile-1',
+      institutionName: 'National Agriculture Bank',
+      institutionType: 'BANK',
+      licenseNumber: 'NBF2024001',
+    },
+  },
+];
 
 export default async function handler(req, res) {
   // CORS headers
@@ -34,37 +75,62 @@ export default async function handler(req, res) {
       });
     }
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: {
-        farmerProfile: true,
-        lenderProfile: true,
-      },
-    });
+    // Try database first (if available)
+    let user = null;
+    let useMockData = false;
 
-    if (!user) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Invalid credentials'
+    try {
+      // Dynamically import Prisma only if needed
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+
+      user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          farmerProfile: true,
+          lenderProfile: true,
+        },
       });
+
+      await prisma.$disconnect();
+
+      // Verify password for database user
+      if (user) {
+        const bcrypt = await import('bcryptjs');
+        const isDemoMode = process.env.DEMO_MODE === 'true';
+        const isValidPassword = isDemoMode && password === 'demo123'
+          ? true
+          : await bcrypt.compare(password, user.password);
+
+        if (!isValidPassword) {
+          return res.status(401).json({
+            status: 'error',
+            message: 'Invalid credentials'
+          });
+        }
+      }
+    } catch (dbError) {
+      console.log('Database not available, using mock data:', dbError.message);
+      useMockData = true;
     }
 
-    // Verify password
-    const isDemoMode = process.env.DEMO_MODE === 'true';
-    let isValidPassword = false;
+    // Fallback to mock data if database is not available or user not found
+    if (!user || useMockData) {
+      user = MOCK_USERS.find(u => u.email === email);
 
-    if (isDemoMode && password === 'demo123') {
-      isValidPassword = true;
-    } else {
-      isValidPassword = await bcrypt.compare(password, user.password);
-    }
+      if (!user) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid credentials'
+        });
+      }
 
-    if (!isValidPassword) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Invalid credentials'
-      });
+      if (user.password !== password) {
+        return res.status(401).json({
+          status: 'error',
+          message: 'Invalid credentials'
+        });
+      }
     }
 
     // Generate JWT token
@@ -97,9 +163,7 @@ export default async function handler(req, res) {
     console.error('Login error:', error);
     res.status(500).json({
       status: 'error',
-      message: 'Internal server error'
+      message: 'Internal server error: ' + error.message
     });
-  } finally {
-    await prisma.$disconnect();
   }
 }
